@@ -33,11 +33,9 @@ def derive_language(wiki: str) -> str:
 def is_canary_event(change: dict) -> bool:
     return change.get("meta", {}).get("domain") == "canary"
 
-
 def delivery_report(err, msg):
     if err is not None:
         print(f"Delivery failed: {err}")
-
 
 def main():
     producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS})
@@ -83,7 +81,7 @@ def main():
         print(f"Stopped. Total produced: {sent}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     try:
         main()
     except KeyboardInterrupt:

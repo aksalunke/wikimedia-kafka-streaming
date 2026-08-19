@@ -52,7 +52,6 @@ def flush_window(conn, window_start_epoch, counts, observation_start, observatio
     flag = " [PARTIAL]" if is_partial(duration_seconds, WINDOW_SECONDS) else ""
     print(f"Flushed {start_iso} -> {end_iso}: {dict(counts)} ({duration_seconds}s observed{flag})")
 
-
 def main():
     consumer = Consumer({
         "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
