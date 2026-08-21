@@ -1,16 +1,18 @@
 import json
 import sqlite3
 import time
+import os
+import signal
 from collections import defaultdict
 from datetime import datetime, timezone
 
 from confluent_kafka import Consumer
 
 KAFKA_TOPIC = "wikimedia-recentchange"
-KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 CONSUMER_GROUP = "wiki-language-aggregator"
 WINDOW_SECONDS = 300  # temporarily 30 for testing — switch back to 300 once verified
-DB_PATH = "edit_velocity.db"
+DB_PATH = os.environ.get("DB_PATH", "edit_velocity.db")
 
 
 def init_db(path):
@@ -51,6 +53,9 @@ def flush_window(conn, window_start_epoch, counts, observation_start, observatio
     conn.commit()
     flag = " [PARTIAL]" if is_partial(duration_seconds, WINDOW_SECONDS) else ""
     print(f"Flushed {start_iso} -> {end_iso}: {dict(counts)} ({duration_seconds}s observed{flag})")
+
+def handle_sigterm(signum, frame):
+    raise KeyboardInterrupt()
 
 def main():
     consumer = Consumer({
@@ -106,4 +111,5 @@ def main():
 
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, handle_sigterm)
     main()

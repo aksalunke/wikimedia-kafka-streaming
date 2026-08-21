@@ -1,0 +1,9 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+*.db
+.pytest_cache/
+tests/
+docs/
+kafka-data/

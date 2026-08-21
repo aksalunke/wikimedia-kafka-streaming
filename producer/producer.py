@@ -1,4 +1,6 @@
 import json
+import os
+import signal
 from confluent_kafka import Producer
 from requests_sse import EventSource
 
@@ -7,7 +9,7 @@ HEADERS = {
     "User-Agent": "wikimedia-kafka-streaming/1.0 (https://github.com/<your-username>/wikimedia-kafka-streaming)"
 }
 KAFKA_TOPIC = "wikimedia-recentchange"
-KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
 # Wikis that aren't tied to a single language at all
 NON_LANGUAGE_WIKIS = {
@@ -36,6 +38,9 @@ def is_canary_event(change: dict) -> bool:
 def delivery_report(err, msg):
     if err is not None:
         print(f"Delivery failed: {err}")
+
+def handle_sigterm(signum, frame):
+    raise KeyboardInterrupt()        
 
 def main():
     producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS})
@@ -81,7 +86,8 @@ def main():
         print(f"Stopped. Total produced: {sent}")
 
 
-if __name__ == "__main__":    
+if __name__ == "__main__": 
+    signal.signal(signal.SIGTERM, handle_sigterm)   
     try:
         main()
     except KeyboardInterrupt:
