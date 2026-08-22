@@ -1,6 +1,7 @@
 # Data Notes — Wikimedia Kafka Streaming Pipeline
 
 ## 1. Broker healthcheck confirms real readiness, not just container start
+
 `docker compose ps` after `docker compose up -d`:
 
 ```
@@ -13,6 +14,7 @@ against the broker — confirmation it's accepting client connections, not just 
 started.
 
 ## 2. Live data disproved the "plain language wiki" assumption immediately
+
 First three real events pulled from the stream during producer development:
 
 ```
@@ -28,6 +30,7 @@ at all. `derive_language()` handles both: a suffix list covering every sister pr
 `wiki`), plus an explicit non-language bucket for wikis like `wikidatawiki` and `commonswiki`.
 
 ## 3. "other" dominates raw edit volume — confirmed, not assumed
+
 The first five real messages read back from the topic were all `"language": "other"` — every one
 `commonswiki` or `wikidatawiki`. Cross-checked against Wikimedia's own engineering documentation:
 Wikidata's edit volume is known to flood other wikis' recent-changes feeds, sometimes to double
@@ -46,6 +49,7 @@ Flushed 2026-08-15T14:35:00+00:00 -> 2026-08-15T14:40:00+00:00: {'et': 11, 'it':
 see ADR #5.
 
 ## 4. Producer survived a live broker outage unassisted
+
 Mid-run, the producer logged a genuine connectivity loss to the broker:
 
 ```
@@ -60,6 +64,7 @@ restart needed. No code change required; this is `confluent-kafka`'s built-in re
 working as intended.
 
 ## 5. The same outage forced a consumer group rebalance — and exposed a real blind spot
+
 Consumer log from the same incident:
 
 ```
@@ -81,6 +86,7 @@ would hook `confluent-kafka`'s `on_revoke`/`on_assign` callbacks to track actual
 per window.
 
 ## 6. Partial vs. full windows, side by side — the evidence behind `duration_seconds`
+
 Query run against the raw table, no filter:
 
 ```
@@ -114,4 +120,118 @@ to do, keeping only windows that ran their full length:
 ('2026-08-15T14:35:00+00:00', 'en', 1270, 300.0)
 ('2026-08-15T14:35:00+00:00', 'other', 3597, 300.0)
 ('2026-08-15T14:35:00+00:00', 'zh', 938, 300.0)
+```
+
+## 7. Full pipeline, one command — the actual finish line
+
+`docker compose ps` after `docker compose up -d --build`, all three services:
+
+```
+NAME       IMAGE                                COMMAND                  SERVICE    CREATED              STATUS                        PORTS
+consumer   wikimedia-kafka-streaming-consumer   "python consumer/con…"   consumer   15 seconds ago       Up 8 seconds
+kafka      apache/kafka:4.2.0                   "/__cacert_entrypoin…"   kafka      About a minute ago   Up About a minute (healthy)   0.0.0.0:9092-9093->9092-9093/tcp, [::]:9092-9093->9092-9093/tcp
+producer   wikimedia-kafka-streaming-producer   "python producer/pro…"   producer   15 seconds ago       Up 8 seconds
+```
+
+Confirmed with the topic recreated at its intended shape:
+
+```
+Topic: wikimedia-recentchange   TopicId: ZjPfLRLZRzOyMFD9bUBJ-A PartitionCount: 3       ReplicationFactor: 1    Configs: min.insync.replicas=1
+        Topic: wikimedia-recentchange   Partition: 0    Leader: 1       Replicas: 1     Isr: 1  Elr:    LastKnownElr:
+        Topic: wikimedia-recentchange   Partition: 1    Leader: 1       Replicas: 1     Isr: 1  Elr:    LastKnownElr:
+        Topic: wikimedia-recentchange   Partition: 2    Leader: 1       Replicas: 1     Isr: 1  Elr:    LastKnownElr:
+```
+
+Broker, producer, and consumer — three separate containers, one `docker compose up`, exactly
+the architecture the original two-weekend scope called for.
+
+## 8. A real cross-platform case-sensitivity bug
+
+`dir producer` after adding the Dockerfile and requirements file:
+
+```
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----        18/08/2026     12:06            232 DockerFile
+-a----        18/08/2026     12:07             44 requirements
+```
+
+Resulting build failure:
+
+```
+target producer: failed to solve: failed to read dockerfile: open Dockerfile: no such file or directory
+```
+
+Root cause: Windows/NTFS is case-insensitive, so `DockerFile` and `Dockerfile` looked identical
+locally and `dir` never flagged anything wrong. Docker Desktop builds run inside WSL2's Linux
+environment, which is case-sensitive — `DockerFile` and `Dockerfile` are two unrelated names
+there, and the one Compose asked for genuinely didn't exist. Same root cause affected the missing
+`.txt` extension on `requirements`. Fixed by renaming both files to their exact expected names in
+both `producer/` and `consumer/`.
+
+## 9. Stale KRaft metadata blocked the broker after the listener change
+
+First attempt to bring up the new dual-listener config against the existing `kafka-data` volume:
+
+```
+[+] up 5/5
+ ✔ Image wikimedia-kafka-streaming-producer Built                                    28.2s
+ ✔ Image wikimedia-kafka-streaming-consumer Built                                    28.2s
+ ✘ Container kafka                          Error dependency kafka failed to start  133.7s
+ ✔ Container producer                       Created                                   0.2s
+ ✔ Container consumer                       Created                                   0.2s
+dependency failed to start: container kafka is unhealthy
+```
+
+Broker logs showed a repeating heartbeat failure rather than an outright rejection:
+
+```
+WARN [BrokerLifecycleManager id=1] Broker 1 sent a heartbeat request but received error REQUEST_TIMED_OUT.
+INFO [NodeToControllerChannelManager id=1 name=heartbeat] Disconnecting from node 1 due to request timeout.
+INFO [broker-1-to-controller-heartbeat-channel-manager]: Recorded new KRaft controller, from now on will use node kafka:9093 (id: 1 rack: null isFenced: false)
+INFO [BrokerLifecycleManager id=1] Unable to send a heartbeat because the RPC got timed out before it could be sent.
+```
+
+The broker correctly found the new controller address (`kafka:9093`) but couldn't complete
+registration against it — consistent with KRaft persisting broker identity, including listener
+info, to disk on first startup, and that old single-listener identity conflicting with the new
+two-listener config on this restart. Fixed by removing the `kafka-data` volume entirely and
+letting the broker register itself fresh — not by editing any config.
+
+## 10. Auto-created topics silently reformat on a fresh broker
+
+First `--describe` after the volume wipe, before the producer had ever explicitly created the
+topic:
+
+```
+Topic: wikimedia-recentchange   TopicId: uJuwDc1qROKK0Ybq-0LRPQ PartitionCount: 1       ReplicationFactor: 1     Configs: min.insync.replicas=1
+        Topic: wikimedia-recentchange   Partition: 0    Leader: 1       Replicas: 1     Isr: 1  Elr:    LastKnownElr:
+```
+
+1 partition, not the 3 specified back in Phase 1 — Kafka's default `auto.create.topics.enable`
+silently created the topic with generic defaults the moment the producer first connected to an
+empty broker. Nothing crashed; the pipeline would have run correctly, just without the
+per-language partitioning the design depends on. Fixed two ways: explicitly deleted and
+recreated the topic with `--partitions 3`, and set `KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'` on
+the broker so this can't happen silently again — see ADR 10. Confirmed via a second `--describe`,
+shown in item 7 above.
+
+## 11. Consumer survived a 38-minute connectivity gap unattended
+
+Logged after the pipeline had been running unattended for a while:
+
+```
+%4|1787149726.744|SESSTMOUT|rdkafka#consumer-1| [thrd:main]: Consumer group session timed out (in join-state steady) after 2317236 ms without a successful response from the group coordinator (broker 1, last error was Success): revoking assignment and rejoining group
+%5|1787149726.931|REQTMOUT|rdkafka#consumer-1| [thrd:kafka:29092/1]: kafka:29092/1: Timed out FetchRequest in flight (after 2316772ms, timeout #0)
+```
+
+`2317236 ms` is roughly 38.5 minutes — far longer than the ~45-second broker outage documented
+in item 5, most likely the host machine or WSL2 sleeping for an extended stretch. Confirmed
+recovered without any manual restart:
+
+```
+NAME       IMAGE                                COMMAND                  SERVICE    CREATED       STATUS                PORTS
+consumer   wikimedia-kafka-streaming-consumer   "python consumer/con…"   consumer   2 hours ago   Up 2 hours
+kafka      apache/kafka:4.2.0                   "/__cacert_entrypoin…"   kafka      2 hours ago   Up 2 hours (healthy)   0.0.0.0:9092-9093->9092-9093/tcp, [::]:9092-9093->9092-9093/tcp
+producer   wikimedia-kafka-streaming-producer   "python producer/pro…"   producer   2 hours ago   Up 2 hours
 ```

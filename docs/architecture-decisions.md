@@ -51,8 +51,7 @@ internals.
 Docker service.
 
 **Reasoning:** No extra container, no new dependency, keeps `docker-compose.yml` focused on the
-technology actually being demonstrated (Kafka). Trivially queryable for interview demonstration
-purposes.
+technology actually being demonstrated (Kafka). 
 
 ## ADR 8 — `duration_seconds` tracked per window, not just documented
 **Decision:** Record actual observed wall-clock duration per window (`observation_start` to flush
@@ -71,3 +70,9 @@ did not attempt to increase throughput or parallelize connections to the stream.
 
 **Reasoning:** Wikimedia's own documentation describes EventStreams as intended for small-scale external tool developers, and enforces a User-Agent policy specifically to trace misbehaving clients. Building responsibly against someone else's public infrastructure is part of the actual
 engineering, not incidental to it.
+
+## ADR 10 — Explicit topic creation only; auto-create disabled
+
+**Decision:** Set KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false' on the broker.
+
+**Reasoning:** Found via a real bug, not decided in the abstract — the first time the producer connected to a freshly wiped broker, Kafka's default auto-create behavior silently recreated wikimedia-recentchange with 1 partition instead of the intended 3, since a topic gets created automatically on first use unless this is explicitly turned off. Nothing crashed and the pipeline kept running, but the per-language partitioning the whole design depends on was gone, invisibly. With auto-create disabled, producing to a nonexistent topic now fails loudly instead of silently creating something wrong-shaped — see **data-notes.md, item 10**.
