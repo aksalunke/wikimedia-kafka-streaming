@@ -6,7 +6,7 @@ from requests_sse import EventSource
 
 STREAM_URL = "https://stream.wikimedia.org/v2/stream/recentchange"
 HEADERS = {
-    "User-Agent": "wikimedia-kafka-streaming/1.0 (https://github.com/<your-username>/wikimedia-kafka-streaming)"
+    "User-Agent": "wikimedia-kafka-streaming/1.0 (https://github.com/aksalunke/wikimedia-kafka-streaming)"
 }
 KAFKA_TOPIC = "wikimedia-recentchange"
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
