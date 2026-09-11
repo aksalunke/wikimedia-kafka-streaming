@@ -148,3 +148,6 @@ wikimedia-kafka-streaming/
   decision, with the reasoning behind it
 - [`docs/data-notes.md`](docs/data-notes.md) — real evidence from the running pipeline: bugs
   found, data quirks discovered, failures survived
+
+## Author
+   Akshay | AWS Solutions Architect | MSc Financial Technology | [LinkedIn]https://linkedin.com/in/akshayksalunke
