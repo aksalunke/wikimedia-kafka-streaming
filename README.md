@@ -150,4 +150,4 @@ wikimedia-kafka-streaming/
   found, data quirks discovered, failures survived
 
 ## Author
-   Akshay | AWS Solutions Architect | MSc Financial Technology | [LinkedIn]https://linkedin.com/in/akshayksalunke
+   Akshay Salunke | AWS Solutions Architect | MSc Financial Technology | [LinkedIn]https://linkedin.com/in/akshayksalunke
